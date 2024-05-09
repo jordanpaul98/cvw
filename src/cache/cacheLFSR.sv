@@ -54,7 +54,6 @@ module cacheLFSR
   localparam			       RAND_REGS = LOGNUMWAYS + 2;  // number of bits in random generator + 2 (jordan)
 
   logic [LOGNUMWAYS-1:0]               HitWayEncoded, Way;
-  logic [NUMWAYS-2:0]                  WayExpanded;
   logic                                AllValid;
   
   genvar                               row;
@@ -85,15 +84,6 @@ module cacheLFSR
 
   // On a miss we need to ignore HitWay and derive the new replacement bits with the VictimWay.
   mux2 #(LOGNUMWAYS) WayMuxEnc(HitWayEncoded, VictimWayEnc, SetValid, Way);
-
-  // bit duplication
-  // expand HitWay as HitWay[3], {{2}{HitWay[2]}}, {{4}{HitWay[1]}, {{8{HitWay[0]}}, ...
-  for(row = 0; row < LOGNUMWAYS; row++) begin
-    localparam integer DuplicationFactor = 2**(LOGNUMWAYS-row-1);
-    localparam StartIndex = NUMWAYS-2 - DuplicationFactor + 1;
-    localparam EndIndex = NUMWAYS-2 - 2 * DuplicationFactor + 2;
-    assign WayExpanded[StartIndex : EndIndex] = {{DuplicationFactor}{Way[row]}};
-  end
 
 
   // next bit in random sequence, CurrentRandom registers(log(N-WAYS) + 2) - jordan
