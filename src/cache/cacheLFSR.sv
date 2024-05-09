@@ -1,11 +1,15 @@
 ///////////////////////////////////////////
 // cacheLFSR=.sv
 //
-// Written: Rose Thompson ross1728@gmail.com
+// Original Written (LRU): Rose Thompson ross1728@gmail.com
 // Created: 20 July 2021
-// Modified: 20 January 2023
+// Modified: 4 may 2024 - Jordan Paul
+// Adopts LRU for LFSR
 //
-// Purpose: Implements Pseudo LRU (LFSR). Tested for Powers of 2.
+//  ICACHE in ifu.sv
+//  DCACHE in lsu.sv
+//
+// Purpose: Implements Linear Feedback shift Register (LSFR) for victim way
 //
 // Documentation: RISC-V System on Chip Design Chapter 7 (Figures 7.8 and 7.15 to 7.18)
 //
@@ -47,6 +51,7 @@ module cacheLFSR
 );
 
   localparam                           LOGNUMWAYS = $clog2(NUMWAYS);
+  localparam			       RAND_REGS = LOGNUMWAYS + 2;  // number of bits in random generator + 2 (jordan)
 
   logic [LOGNUMWAYS-1:0]               HitWayEncoded, Way;
   logic [NUMWAYS-2:0]                  WayExpanded;
@@ -91,25 +96,28 @@ module cacheLFSR
   end
 
 
-  // next bit in random sequence, CurrentRandom registers(7 bits)
-  logic next;
-  logic [6:0] CurrRandom;
-  flopenl #(7) lsrf(.clk(clk), .load(reset), .en(LRUWriteEn), .val(7'd1), .d({next, CurrRandom[6:1]}), .q(CurrRandom));
-  assign next = CurrRandom[6] ^ CurrRandom[0];
+  // next bit in random sequence, CurrentRandom registers(log(N-WAYS) + 2) - jordan
+  logic next;  
+  logic [RAND_REGS-1:0] CurrRandom;  // create register
+  flopenl #(RAND_REGS) lsrf(.clk(clk), .load(reset), .en(LRUWriteEn), .val({RAND_REGS{1'd1}}), .d({next, CurrRandom[RAND_REGS-1:1]}), .q(CurrRandom));
+  assign next = CurrRandom[RAND_REGS-1] ^ CurrRandom[0]; // get next current lower bit by XOR(LSB, MSB) - jordan
 
   
   priorityonehot #(NUMWAYS) FirstZeroEncoder(~ValidWay, FirstZero);
   binencoder #(NUMWAYS) FirstZeroWayEncoder(FirstZero, FirstZeroWay);
-  mux2 #(LOGNUMWAYS) VictimMux(FirstZeroWay, CurrRandom[$clog2(NUMWAYS)-1:0], AllValid, VictimWayEnc);
+  // splice lower LOGNUMWAYS of CurrRandom into VictimWayEnc -jordan
+  mux2 #(LOGNUMWAYS) VictimMux(FirstZeroWay, {CurrRandom[LOGNUMWAYS-1:0]}, AllValid, VictimWayEnc);
+  // decode log(N-Ways) to decimal
   decoder #(LOGNUMWAYS) decoder (VictimWayEnc, VictimWay);
 
+  // commented everything out dont think anything needs to happen here - jordan
   // note: Verilator lint doesn't like <= for array initialization (https://verilator.org/warn/BLKLOOPINIT?v=5.021)
   // Move to = to keep Verilator happy and simulator running fast
-  always_ff @(posedge clk) begin
+  //always_ff @(posedge clk) begin
     // if any resets occur. Set 3rd bit of current random to 1 to ensure the random generator continues
-    if (reset | (InvalidateCache & ~FlushStage) | CacheEn) CurrRandom[2] = 1'b1;
+    //if (reset | (InvalidateCache & ~FlushStage) | CacheEn) CurrRandom[2] = 1'b1;
     //else if(CacheEn) CurrRandom[2] = 1'b1;
-  end
+  //end
 
 endmodule
 

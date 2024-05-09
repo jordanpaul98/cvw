@@ -3,7 +3,10 @@
 //
 // Written: Ross Thompson ross1728@gmail.com
 // Created: 7 July 2021
-// Modified: 20 January 2023
+// Modified: 7 May 2024 - Jordan Paul
+//  ICACHE in ifu.sv
+//  DCACHE in lsu.sv
+//  -implemented switch between LRU && LFSR
 //
 // Purpose: Implements the I$ and D$. Interfaces with requests from IEU and HPTW and ahbcacheinterface
 //
@@ -29,7 +32,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 module cache import cvw::*; #(parameter cvw_t P,
-                              parameter PA_BITS, XLEN, LINELEN,  NUMLINES,  NUMWAYS, LOGBWPL, WORDLEN, MUXINTERVAL, READ_ONLY_CACHE) (
+                              parameter PA_BITS, XLEN, LINELEN,  NUMLINES,  NUMWAYS, LOGBWPL, WORDLEN, MUXINTERVAL, READ_ONLY_CACHE, CACHE_REPL) (
   input  logic                   clk,
   input  logic                   reset,
   input  logic                   Stall,             // Stall the cache, preventing new accesses. In-flight access finished but does not return to READY
@@ -126,9 +129,16 @@ module cache import cvw::*; #(parameter cvw_t P,
 
   // Select victim way for associative caches
   if(NUMWAYS > 1) begin:vict
-    cacheLRU #(NUMWAYS, SETLEN, OFFSETLEN, NUMLINES) cacheLFSR(
-      .clk, .reset, .FlushStage, .CacheEn, .HitWay, .ValidWay, .VictimWay, .CacheSetData, .CacheSetTag, .LRUWriteEn,
-      .SetValid, .ClearValid, .PAdr(PAdr[SETTOP-1:OFFSETLEN]), .InvalidateCache);
+    // select between the LRU or LSFR - Jordan
+    if(CACHE_REPL == 1) begin // LSFR replacement
+ 	cacheLFSR #(NUMWAYS, SETLEN, OFFSETLEN, NUMLINES) victLFSR(
+	   .clk, .reset, .FlushStage, .CacheEn, .HitWay, .ValidWay, .VictimWay, .CacheSetData, .CacheSetTag, .LRUWriteEn,
+	   .SetValid, .ClearValid, .PAdr(PAdr[SETTOP-1:OFFSETLEN]), .InvalidateCache);
+    end else begin  // LRU replacement
+	cacheLRU #(NUMWAYS, SETLEN, OFFSETLEN, NUMLINES) victLRU(
+	   .clk, .reset, .FlushStage, .CacheEn, .HitWay, .ValidWay, .VictimWay, .CacheSetData, .CacheSetTag, .LRUWriteEn,
+	   .SetValid, .ClearValid, .PAdr(PAdr[SETTOP-1:OFFSETLEN]), .InvalidateCache);
+    end
   end else 
     assign VictimWay = 1'b1; // one hot.
 
