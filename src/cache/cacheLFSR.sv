@@ -52,6 +52,7 @@ module cacheLFSR
 
   localparam                           LOGNUMWAYS = $clog2(NUMWAYS);
   localparam			       RAND_REGS = LOGNUMWAYS > 7 ? LOGNUMWAYS : 7;  // number of bits in random generator + 2 (jordan)
+  localparam			       LSFR_REG_SPLCE = LOGNUMWAYS < RAND_REGS ? LOGNUMWAYS : RAND_REGS;
 
   logic [LOGNUMWAYS-1:0]               HitWayEncoded, Way;
   logic                                AllValid;
@@ -88,23 +89,23 @@ module cacheLFSR
 
   logic next; // next bit in random sequence
   logic last_register;  
-  logic [RAND_REGS-2:0] CurrRandom;  // create register
+  logic [6:0] CurrRandom;  // create register
   logic LSFR_ENABLE = ~FlushStage & LRUWriteEn; // enable the registers
-  //flopenl #(RAND_REGS) lsrf(.clk(clk), .load(reset), .en(LRUWriteEn),
-  //                          .val({RAND_REGS{1'd1}}), .d({next, CurrRandom[RAND_REGS-1:1]}),
-  //                          .q(CurrRandom));
+  flopenl #(7) lsrf(.clk(clk), .load(reset), .en(LRUWriteEn & ~FlushStage),
+                            .val(7'd1), .d({next, CurrRandom[6:1]}),
+                            .q(CurrRandom));
   
   //   LSFR = [ REG6 | REG5 | REG4 | REG3 | REG2 | REG1 | REG0 ]
   //       -> [ FLOPENR [6:1]   |   FLOPENL [0]  ]
-  flopenr #(RAND_REGS - 1) lsfr     (.clk(clk), .reset(reset), .en(LSFR_ENABLE),
-                                     .d({next, CurrRandom[RAND_REGS-2:1]}), .q(CurrRandom));
-
-  flopenl #(1)             lsfr_last(.clk(clk), .load(reset), .en(LSFR_ENABLE), .val(1'd1),
-                                     .d(CurrRandom[RAND_REGS-2]),           .q(last_register));
+  //flopenr #(6) lsfr     (.clk(clk), .reset(reset), .en(LSFR_ENABLE),
+  //                       .d({next, CurrRandom[5:1]}), .q(CurrRandom));
+  //
+  //flopenl #(1) lsfr_last(.clk(clk), .load(reset),  .en(LSFR_ENABLE), .val(1'd1),
+  //                      .d(CurrRandom[0]),        .q(last_register));
 
   // get the next bit by xoring last_register, and 3 other registers output
-  assign next = CurrRandom[0] ^ CurrRandom[1] ^ CurrRandom[3] ^ last_register;
-	
+  //assign next = CurrRandom[5] ^ CurrRandom[4] ^ CurrRandom[2] ^ last_register;
+  assign next = CurrRandom[6] ^ CurrRandom[5] ^ CurrRandom[3] ^ CurrRandom[0];	
 
   initial begin
 	// initial set a value to 1 in the Current Random
@@ -114,7 +115,7 @@ module cacheLFSR
   priorityonehot #(NUMWAYS) FirstZeroEncoder(~ValidWay, FirstZero);
   binencoder #(NUMWAYS) FirstZeroWayEncoder(FirstZero, FirstZeroWay);
   // splice lower LOGNUMWAYS of CurrRandom into VictimWayEnc -jordan
-  mux2 #(LOGNUMWAYS) VictimMux(FirstZeroWay, {CurrRandom, last_register}, AllValid, VictimWayEnc);
+  mux2 #(LOGNUMWAYS) VictimMux(FirstZeroWay, CurrRandom[LOGNUMWAYS-1:0], AllValid, VictimWayEnc);
   // decode log(N-Ways) to decimal
   decoder #(LOGNUMWAYS) decoder (VictimWayEnc, VictimWay);
 
